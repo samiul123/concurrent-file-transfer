@@ -3,6 +3,7 @@ package org.example;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32C;
 import java.util.zip.CheckedInputStream;
@@ -24,7 +25,7 @@ public class Server {
                 t.start();
             }
         } catch (Exception exception) {
-            System.out.println(exception.getMessage());
+            logger.log(Level.SEVERE, exception.getMessage());
         }
     }
 }
@@ -67,7 +68,14 @@ class ClientHandler extends Thread {
                 }
             }
         } catch (Exception e) {
-            System.out.println("Server: " + e);
+            Server.logger.log(Level.SEVERE, "Server: " + e);
+        } finally {
+            try {
+                if (dis != null) dis.close();
+                if (dos != null) dos.close();
+            } catch (IOException exception) {
+                Server.logger.log(Level.SEVERE, exception.getMessage());
+            }
         }
 //        TODO: close streams in Finally block
 //        TODO: add summary of success/fail count

@@ -116,10 +116,15 @@ class ClientThread extends Thread {
             LocalTime threadFinishTime = LocalTime.now();
             Client.logger.info(ClientThread.currentThread().getName() + ": Finished at " + threadFinishTime +
                     ". Duration: " + Duration.between(threadStartTime, threadFinishTime).toMillis());
-            dis.close();
-            dos.close();
         } catch (IOException e) {
-            System.out.println(e.getMessage());
+            Client.logger.log(Level.SEVERE, e.getMessage());
+        } finally {
+            try {
+                if (dis != null) dis.close();
+                if (dos != null) dos.close();
+            } catch (IOException e) {
+                Client.logger.log(Level.SEVERE, e.getMessage());
+            }
         }
 
     }
