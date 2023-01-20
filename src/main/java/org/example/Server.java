@@ -15,6 +15,9 @@ public class Server {
     public static Logger logger = Logger.getLogger(Server.class.getName());
 
     public static void main(String[] args) throws IOException {
+        System.setProperty("java.util.logging.SimpleFormatter.format",
+                "%1$tF %1$tT %4$s %2$s %5$s%6$s%n");
+
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             while (true) {
                 logger.info("Server is listening on port: " + PORT);
