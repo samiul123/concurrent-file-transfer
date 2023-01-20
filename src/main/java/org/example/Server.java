@@ -3,6 +3,8 @@ package org.example;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalTime;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -42,6 +44,14 @@ class ClientHandler extends Thread {
     public ClientHandler(DataInputStream dis, DataOutputStream dos) {
         this.dis = dis;
         this.dos = dos;
+        Path destinationDirectory = Path.of(dir);
+        if (Files.notExists(destinationDirectory)) {
+            try {
+                Files.createDirectory(destinationDirectory);
+            } catch (IOException e) {
+                Server.logger.log(Level.SEVERE, "Could not create directory: " + dir);
+            }
+        }
     }
 
     @Override
@@ -73,7 +83,7 @@ class ClientHandler extends Thread {
                 }
             }
         } catch (Exception e) {
-            Server.logger.log(Level.SEVERE, "Server: " + e);
+            Server.logger.log(Level.SEVERE, ClientHandler.currentThread().getName() + ": " + e);
         } finally {
             try {
                 if (dis != null) dis.close();
