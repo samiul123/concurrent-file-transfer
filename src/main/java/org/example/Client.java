@@ -6,8 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalTime;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32C;
@@ -17,7 +19,12 @@ public class Client {
     public static Logger logger = Logger.getLogger(Client.class.getName());
     private static int concurrency = 1;
 
+    public static AtomicLong totalBytesTransferred = new AtomicLong(0);
+
     public static void main(String[] args) throws IOException, InterruptedException {
+        System.setProperty("java.util.logging.SimpleFormatter.format",
+                "%1$tF %1$tT %4$s %2$s %5$s%6$s%n");
+
         if (args.length == 0) {
             logger.log(Level.SEVERE, "Source directory location is required");
             return;
@@ -46,28 +53,56 @@ public class Client {
         concurrency = Math.min(concurrency, files.length);
 
         logger.info("Concurrency: " + concurrency);
+
+        LocalTime startTime = LocalTime.now();
+        logger.info("Start time: " + startTime);
+
         sendFile(files);
+
+        LocalTime endTime = LocalTime.now();
+        logger.info("End time: " + endTime);
+
+        calculateThroughput(startTime, endTime);
     }
 
     private static void sendFile(File[] files) {
         int numberOfFilesToSend = files.length;
         logger.info("Total number of files to send: " + numberOfFilesToSend);
-        int numberOfSockets = (int) Math.ceil((double) numberOfFilesToSend / concurrency);
-        logger.info("Total Number of connections: " + numberOfSockets);
-        int from = 0;
-        for (int i = 0; i < numberOfSockets; i++) {
+
+        List<Thread> threads = new ArrayList<>();
+
+        for (int i = 0; i < concurrency; i++) {
             try {
                 Socket socket = new Socket("localhost", Server.PORT);
                 DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                 DataInputStream dis = new DataInputStream(socket.getInputStream());
-                File[] copy = Arrays.copyOfRange(files, from, Math.min(from + concurrency, files.length));
-                from += concurrency;
-                Thread t = new ClientThread(copy, dos, dis);
+                Thread t = new ClientThread(files, dos, dis, concurrency);
+                threads.add(t);
                 t.start();
             } catch (IOException e) {
                 logger.log(Level.SEVERE, e.getMessage());
             }
         }
+
+        for (Thread thread :
+                threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException exception) {
+                logger.log(Level.SEVERE, exception.getMessage());
+
+            }
+        }
+    }
+
+    private static void calculateThroughput(LocalTime startTime, LocalTime endTime) {
+        long totalDuration = Duration.between(startTime, endTime).toSeconds();
+        logger.info("Total Time taken(in seconds): " + totalDuration);
+        double totalBytesTransferredInMB = totalBytesTransferred.doubleValue() / Math.pow(10, 6);
+        logger.info("Total Bytes Transferred(in Mega Bytes[MB]): " +
+                totalBytesTransferredInMB);
+        double throughput = totalBytesTransferredInMB / totalDuration;
+        logger.info("Throughput(MB per second): " + throughput);
     }
 }
 
@@ -76,10 +111,13 @@ class ClientThread extends Thread {
     final private DataInputStream dis;
     final private File[] files;
 
-    public ClientThread(File[] files, DataOutputStream dos, DataInputStream dis) {
+    final private int concurrency;
+
+    public ClientThread(File[] files, DataOutputStream dos, DataInputStream dis, int concurrency) {
         this.dis = dis;
         this.dos = dos;
         this.files = files;
+        this.concurrency = concurrency;
     }
 
     @Override
@@ -87,35 +125,40 @@ class ClientThread extends Thread {
         try {
             LocalTime threadStartTime = LocalTime.now();
             Client.logger.info(ClientThread.currentThread().getName() + ": Started at " + threadStartTime);
-            dos.writeLong(files.length);
-            Client.logger.info(ClientThread.currentThread().getName() + ": Sending " + files.length + " files");
-            for (File file :
-                    files) {
-                long length = file.length();
+            String[] split = ClientThread.currentThread().getName().split("-");
+            int threadNumber = Integer.parseInt(split[1]);
+            sendNumberOfFilesPerThread(threadNumber);
+            int index = threadNumber;
+            while (index < files.length) {
+                long length = files[index].length();
                 dos.writeLong(length);
-                String fileName = file.getName();
+                String fileName = files[index].getName();
                 Client.logger.info(ClientThread.currentThread().getName() + ": Sending " + fileName + " file. " +
                         " Size: " + length);
                 dos.writeUTF(fileName);
 
-                FileInputStream fis = new FileInputStream(file);
+                FileInputStream fis = new FileInputStream(files[index]);
                 CheckedInputStream checkedInputStream = new CheckedInputStream(fis, new CRC32C());
                 sendFile(length, checkedInputStream);
                 long checkSum = checkedInputStream.getChecksum().getValue();
                 dos.writeLong(checkSum);
                 Client.logger.info(ClientThread.currentThread().getName() + ": sent file " + fileName +
-                        " of size " + file.length() + " checksum: " + checkSum);
+                        " of size " + files[index].length() + " checksum: " + checkSum);
                 dos.flush();
                 fis.close();
                 checkedInputStream.close();
                 int status = dis.readInt();
                 if (status == 200) {
-                    Client.logger.info(ClientThread.currentThread().getName() + ": File is received successfully");
+                    String serverReceiptTime = dis.readUTF();
+                    Client.logger.info(ClientThread.currentThread().getName() +
+                            ": File is received successfully at " + serverReceiptTime);
+                    Client.totalBytesTransferred.addAndGet(files[index].length());
                 }
+                index += concurrency;
             }
             LocalTime threadFinishTime = LocalTime.now();
             Client.logger.info(ClientThread.currentThread().getName() + ": Finished at " + threadFinishTime +
-                    ". Duration: " + Duration.between(threadStartTime, threadFinishTime).toMillis());
+                    ". Duration(in seconds): " + Duration.between(threadStartTime, threadFinishTime).toSeconds());
         } catch (IOException e) {
             Client.logger.log(Level.SEVERE, e.getMessage());
         } finally {
@@ -127,6 +170,18 @@ class ClientThread extends Thread {
             }
         }
 
+    }
+
+    private void sendNumberOfFilesPerThread(int threadNumber) throws IOException {
+        int numberOfExtraFiles = files.length % concurrency;
+        int numberOfFilesPerThread = files.length / concurrency;
+        if (numberOfExtraFiles > 0) {
+            if (threadNumber < numberOfExtraFiles) {
+                numberOfFilesPerThread += 1;
+            }
+        }
+        dos.writeLong(numberOfFilesPerThread);
+        Client.logger.info(ClientThread.currentThread().getName() + ": Sending " + numberOfFilesPerThread + " files");
     }
 
     private void sendFile(long length, CheckedInputStream checkedInputStream) throws IOException {

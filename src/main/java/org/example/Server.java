@@ -3,6 +3,7 @@ package org.example;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.LocalTime;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32C;
@@ -64,6 +65,7 @@ class ClientHandler extends Thread {
 
                 if (checkedInputStream.getChecksum().getValue() == receivedChecksum) {
                     dos.writeInt(200);
+                    dos.writeUTF(String.valueOf(LocalTime.now()));
                     dos.flush();
                 }
             }
@@ -77,8 +79,6 @@ class ClientHandler extends Thread {
                 Server.logger.log(Level.SEVERE, exception.getMessage());
             }
         }
-//        TODO: close streams in Finally block
-//        TODO: add summary of success/fail count
 //        TODO: retry mechanism
     }
 
