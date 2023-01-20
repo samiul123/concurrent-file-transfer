@@ -79,7 +79,6 @@ class ClientHandler extends Thread {
                 Server.logger.log(Level.SEVERE, exception.getMessage());
             }
         }
-//        TODO: retry mechanism
     }
 
     private static void saveFile(long fileLength,
