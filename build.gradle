@@ -9,6 +9,27 @@ repositories {
     mavenCentral()
 }
 
+// reconfigure the Java plugin's `jar` task
+task serverJar(type: Jar) {
+    from sourceSets.main.output
+    manifest.attributes('Main-Class': 'org.example.Server')
+    exclude '**/Client.java'
+    baseName = 'server'
+}
+
+// need to configure this one from scratch
+task clientJar(type: Jar) {
+    // referring to the output in this way
+    // allows Gradle to infer task dependencies automatically
+    from sourceSets.main.output
+    manifest.attributes('Main-Class': 'org.example.Client')
+    exclude '**/Server.java'
+    baseName = 'client'
+}
+
+// one way to make `gradle build` run both Jar tasks
+assemble.dependsOn(serverJar, clientJar)
+
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
